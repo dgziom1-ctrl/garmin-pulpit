@@ -1,0 +1,22 @@
+services:
+  web:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: garmin-pulpit:latest
+    container_name: garmin-pulpit
+    ports:
+      - "8080:80"
+    environment:
+      # Backend FastAPI działający na hoście (poza compose).
+      # Jeśli dodasz backend jako usługę, użyj np. http://garmin-api:8000
+      BACKEND_URL: http://host.docker.internal:8000
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
