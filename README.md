@@ -103,6 +103,7 @@ Brak routera i brak SDK Gemini — mniej zależności i prostszy deploy statyczn
 ## Wymagania
 
 - **Node.js 20+** (zalecane 22 LTS) i npm,
+- **Python 3.9+** (opcjonalnie) — tylko do wariantu Tailscale (`scripts/serve.py`),
 - backend FastAPI zgodny z [kontraktem](#kontrakt-endpointów) **albo** tryb demo,
 - opcjonalnie klucz **Google AI Studio** do funkcji trenera AI,
 - do instalacji PWA na telefonie: **HTTPS** (wyjątek: `localhost`).
@@ -468,6 +469,9 @@ npm run preview   # http://localhost:4173
 Wynik trafia do `dist/`. To zwykłe pliki statyczne — możesz je hostować na nginx,
 Caddy, Cloudflare Pages, Netlify, Vercel, Synology itp.
 
+Do wariantu z Tailscale (frontend + API na jednym origin) użyj dołączonego
+serwera: `python scripts/serve.py` (patrz [Wdrożenie](#wdrożenie)).
+
 Ważne:
 
 - routing jest oparty o hash, więc nie wymaga przepisywania ścieżek, ale warto
@@ -481,47 +485,99 @@ Ważne:
 
 ## Wdrożenie
 
-### 1. GitHub Pages + Tailscale (zalecane)
+### Najpierw: HTTPS i „niebezpieczny” adres API
 
-Frontend jako statyczna PWA na GitHub Pages, backend wystawiony przez Tailscale.
-Nie trzeba utrzymywać własnego serwera WWW ani Dockera.
+Jeśli aplikacja działa z GitHub Pages (HTTPS), a w Ustawieniach wpiszesz API
+`http://192.168.1.50:8000`, przeglądarka zablokuje żądanie jako **mixed content**
+i pokaże ostrzeżenie o niezabezpieczonym adresie. To nie błąd aplikacji —
+strona HTTPS nie może odpytywać HTTP. Adres API musi być HTTPS albo musi być
+tym samym originem co frontend.
 
-**Frontend:**
+### 1. Tailscale Serve — frontend i API na jednym adresie (zalecane)
 
-1. Wrzuć projekt do repozytorium GitHub i wypchnij gałąź `main`.
-2. W repozytorium: **Settings → Pages → Build and deployment → Source:
-   GitHub Actions**.
-3. Gotowy workflow `.github/workflows/deploy.yml` zbuduje projekt i opublikuje
-   `dist/` przy każdym pushu na `main`.
-4. Adres aplikacji: `https://twojanazwa.github.io/garmin-pulpit/`
-   (albo `https://twojanazwa.github.io/`, jeśli repo nazywa się
-   `twojanazwa.github.io`).
+Zalety: brak CORS, brak mixed content, API niewidoczne publicznie, PWA działa na
+telefonie.
 
-Workflow sam ustawia `VITE_BASE` (ścieżkę podkatalogu), więc manifest, ikony i
-service worker działają także w repo bez własnej domeny.
-
-**Backend:**
+Na komputerze, który ma serwować frontend:
 
 ```bash
-# Prywatnie — dostęp tylko z urządzeń zalogowanych do Tailscale (zalecane).
-tailscale serve --bg 8000
+# 1. Build (bez VITE_BASE — aplikacja w katalogu głównym)
+npm run build
 
-# Publicznie w internecie — gdy potrzebujesz dostępu bez instalowania Tailscale.
-tailscale funnel --bg 8000
+# 2. Statyczny serwer + proxy /api/ (Python 3, bez dodatkowych pakietów)
+#    Windows CMD:
+set BACKEND_URL=http://truenas-scale-1.tailxxxx.ts.net:8000
+python scripts/serve.py
+
+#    Linux/macOS:
+export BACKEND_URL=http://truenas-scale-1.tailxxxx.ts.net:8000
+python3 scripts/serve.py
+
+# 3. W drugim terminalu wystaw port 8080 w tailnecie
+tailscale serve --bg 8080
 ```
 
-Otrzymasz adres HTTPS, np. `https://garmin.tailxxxx.ts.net`. Wklej go w
-**Ustawienia → Adres API**, a klucz w **Klucz API (X-API-Key)**.
+Aplikacja: `https://nazwa-komputera.tailxxxx.ts.net/`.
 
-Dlaczego `serve`, a nie `funnel`: `serve` nie wystawia API do internetu — działa
-tylko w Twoim tailnecie, a certyfikat HTTPS i tak jest ważny, więc PWA instaluje
-się na telefonie. `funnel` jest publiczny, więc jedyną ochroną danych jest klucz
-API — ustaw długi, losowy klucz i nie udostępniaj adresu.
+W Ustawieniach:
 
-W FastAPI dodaj origin GitHub Pages do CORS (patrz [CORS](#cors-w-fastapi)) i
-pamiętaj o `allow_headers=["X-API-Key", "Content-Type"]`.
+- **Adres API** zostaw **puste** (żądania idą do tego samego origin),
+- wpisz **Klucz API (X-API-Key)**.
 
-### 2. Docker + nginx (jeden origin, bez CORS)
+`scripts/serve.py`:
+
+- serwuje `dist/` z poprawnymi nagłówkami cache (service worker zawsze świeży),
+- proxuje `/api/*` na `BACKEND_URL` i przekazuje `X-API-Key`,
+- obsługuje fallback SPA dla ścieżek bez hasha.
+
+Na Windows najprościej:
+
+```powershell
+setx BACKEND_URL "http://truenas-scale-1.tailxxxx.ts.net:8000"
+```
+
+a potem dwuklik na `start-tailscale.cmd` (uruchamia `tailscale serve --bg 8080`
+i serwer). Wymagany Python 3 w PATH.
+
+`tailscale serve` działa tylko w tailnecie. Do publicznego dostępu użyj
+`tailscale funnel --bg 8080` — wtedy każdy znający adres może otworzyć
+aplikację, a ochroną danych jest wyłącznie klucz API.
+
+#### Autostart na Windows
+
+```powershell
+setx BACKEND_URL "http://truenas-scale-1.tailxxxx.ts.net:8000"
+schtasks /Create /TN "Garmin Pulpit" /SC ONLOGON /TR "\"C:\Python314\pythonw.exe\" \"C:\Users\Admi\Documents\garmin-pulpit\scripts\serve.py\"" /F
+```
+
+Dostosuj ścieżkę do `pythonw.exe` i projektu. Usunięcie autostartu:
+`schtasks /Delete /TN "Garmin Pulpit" /F`.
+
+`tailscale serve` pamięta konfigurację po restarcie, a serwer startuje przy
+logowaniu. Sprawdzenie: `tailscale serve status`. Jeśli komputer jest wyłączony,
+aplikacja nie działa — wariant „zawsze dostępny” to uruchomienie tego samego
+serwera na TrueNAS i `tailscale serve --bg 8080` na NAS-ie.
+
+### 2. GitHub Pages + API na Tailscale (dwa originy)
+
+Frontend zostaje na GitHub Pages (automatyczny deploy), a backend wystawiasz po
+HTTPS:
+
+```bash
+tailscale serve --bg 8000
+```
+
+Adres API w Ustawieniach: `https://truenas-scale-1.tailxxxx.ts.net` plus klucz.
+W FastAPI dodaj origin `https://twojanazwa.github.io` do CORS.
+
+Uwaga: przeglądarki mogą dodatkowo blokować żądania z publicznej strony do
+prywatnego adresu `100.x` (Local Network Access). Jeśli tak się dzieje, wybierz
+wariant 1.
+
+Jeśli nie używasz GitHub Pages, możesz usunąć `.github/workflows/deploy.yml`
+albo wyłączyć Pages w ustawieniach repozytorium.
+
+### 3. Docker + nginx (jeden origin, bez CORS)
 
 W katalogu projektu:
 
@@ -558,7 +614,7 @@ docker run --rm -p 8080:80 \
   garmin-pulpit
 ```
 
-### 3. Static hosting (Cloudflare Pages / Netlify / Vercel)
+### 4. Static hosting (Cloudflare Pages / Netlify / Vercel)
 
 - **Build command:** `npm run build`
 - **Output directory:** `dist`
@@ -568,26 +624,11 @@ docker run --rm -p 8080:80 \
 
 Pamiętaj o HTTPS — inaczej PWA się nie zainstaluje.
 
-### 4. nginx na własnym serwerze
+### 5. nginx na własnym serwerze
 
 Skopiuj `dist/` do `/var/www/garmin-pulpit` i użyj konfiguracji podobnej do
 `deploy/nginx.conf`. Podmień `${BACKEND_URL}` na rzeczywisty adres i dodaj
 certyfikat TLS (np. Certbot).
-
-### 5. Tailscale
-
-Najprostszy scenariusz domowy:
-
-```bash
-# frontend na porcie 8080 (docker compose)
-tailscale serve --bg 8080
-
-# backend na porcie 8000
-tailscale serve --bg 8000
-```
-
-Otrzymasz dwa adresy HTTPS w tailnecie. W Ustawieniach aplikacji wpisz adres
-backendu, a aplikację otwieraj z adresu frontendu.
 
 ---
 
@@ -631,7 +672,8 @@ garmin-pulpit/
 │  ├─ service-worker.js    # auto-aktualizacja, BUILD_ID wstawiany przy buildzie
 │  └─ icons/
 ├─ scripts/
-│  └─ render-icons.mjs
+│  ├─ render-icons.mjs
+│  └─ serve.py            # serwer statyczny + proxy /api/ (Tailscale)
 ├─ src/
 │  ├─ components/
 │  │  ├─ activities/      # lista i tabela aktywności
@@ -655,6 +697,7 @@ garmin-pulpit/
 │  ├─ App.tsx
 │  ├─ main.tsx
 │  └─ types.ts
+├─ start-tailscale.cmd     # Windows: serwer + Tailscale Serve
 ├─ index.html
 ├─ tailwind.config.js
 ├─ vite.config.ts
@@ -693,9 +736,17 @@ pustego adresu API.
 
 ### Mixed content
 
-Objaw: HTTPS frontend nie może wywołać `http://192.168…`. Rozwiązania:
+Objaw: w konsoli „Mixed Content: … was loaded over HTTPS, but requested an
+insecure resource … This request has been blocked”, a w aplikacji baner o błędzie
+połączenia. Przyczyna: strona działa po HTTPS (np. GitHub Pages), a adres API to
+`http://192.168…` lub `http://100.x…`.
 
-- wystaw API przez HTTPS (Tailscale, reverse proxy, certyfikat),
+Rozwiązania:
+
+- **wariant 1 z wdrożenia**: frontend i API na jednym adresie Tailscale
+  (`https://…ts.net`) — najpewniejsze,
+- wystaw samo API przez `tailscale serve --bg 8000` i wpisz
+  `https://…ts.net` jako adres API,
 - albo serwuj frontend po HTTP w sieci lokalnej (PWA nie zadziała).
 
 ### PWA się nie instaluje
