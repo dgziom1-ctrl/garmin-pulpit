@@ -493,6 +493,9 @@ i pokaże ostrzeżenie o niezabezpieczonym adresie. To nie błąd aplikacji —
 strona HTTPS nie może odpytywać HTTP. Adres API musi być HTTPS albo musi być
 tym samym originem co frontend.
 
+> Docelowy wariant 24/7 (frontend i API na TrueNAS, jeden adres Tailscale):
+> [deploy/TRUENAS.md](deploy/TRUENAS.md).
+
 ### 1. Tailscale Serve — frontend i API na jednym adresie (zalecane)
 
 Zalety: brak CORS, brak mixed content, API niewidoczne publicznie, PWA działa na

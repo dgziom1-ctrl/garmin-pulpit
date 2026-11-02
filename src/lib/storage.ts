@@ -14,6 +14,19 @@ export const DEFAULT_SETTINGS: Settings = {
   goals: { '5k': '', '10k': '', half: '', marathon: '' },
 }
 
+function sanitizeSavedApiBaseUrl(value: unknown): string {
+  if (typeof value !== 'string') return DEFAULT_SETTINGS.apiBaseUrl
+  const trimmed = value.trim()
+  // Puste pole = ten sam origin. Na GitHub Pages (HTTPS) chcemy domyślny adres
+  // HTTPS z VITE_API_BASE_URL, a nie względne /api.
+  if (!trimmed) return DEFAULT_SETTINGS.apiBaseUrl
+  // HTTPS nie może wołać HTTP (mixed content). Stary adres LAN zastępujemy domyślnym.
+  if (window.location.protocol === 'https:' && /^http:\/\//i.test(trimmed)) {
+    return DEFAULT_SETTINGS.apiBaseUrl
+  }
+  return trimmed
+}
+
 export function loadSettings(): Settings {
   try {
     const raw = window.localStorage.getItem(SETTINGS_KEY)
@@ -26,6 +39,7 @@ export function loadSettings(): Settings {
     return {
       ...DEFAULT_SETTINGS,
       ...parsed,
+      apiBaseUrl: sanitizeSavedApiBaseUrl(parsed.apiBaseUrl),
       goals: { ...DEFAULT_SETTINGS.goals, ...(parsed.goals ?? {}) },
     }
   } catch {

@@ -179,13 +179,33 @@ export function normalizeSummary(raw: unknown): HealthSummary {
     bodyBattery: {
       current: toNum(
         first(
-          pick(battery, 'current', 'level', 'value', 'mostRecent', 'bodyBatteryMostRecentValue'),
+          pick(
+            battery,
+            'current',
+            'level',
+            'value',
+            'mostRecent',
+            'bodyBatteryMostRecentValue',
+            'body_battery_current',
+          ),
         ),
       ),
-      max: toNum(first(pick(battery, 'max', 'maximum', 'highest'))),
-      min: toNum(first(pick(battery, 'min', 'minimum', 'lowest'))),
-      charged: toNum(first(pick(battery, 'charged', 'totalCharged', 'chargedValue'))),
-      drained: toNum(first(pick(battery, 'drained', 'totalDrained', 'drainedValue'))),
+      max: toNum(
+        first(pick(battery, 'max', 'maximum', 'highest', 'body_battery_high', 'bodyBatteryHighestValue')),
+      ),
+      min: toNum(
+        first(pick(battery, 'min', 'minimum', 'lowest', 'body_battery_low', 'bodyBatteryLowestValue')),
+      ),
+      charged: toNum(
+        first(
+          pick(battery, 'charged', 'totalCharged', 'chargedValue', 'body_battery_charged', 'bodyBatteryChargedValue'),
+        ),
+      ),
+      drained: toNum(
+        first(
+          pick(battery, 'drained', 'totalDrained', 'drainedValue', 'body_battery_drained', 'bodyBatteryDrainedValue'),
+        ),
+      ),
     },
     hrv: {
       nightlyAvg: toNum(

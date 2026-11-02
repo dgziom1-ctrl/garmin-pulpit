@@ -43,6 +43,9 @@ jobs:
         run: npm run build
         env:
           VITE_BASE: ${{ steps.base.outputs.value }}
+          # Aplikacja na Pages jest HTTPS, więc API musi być HTTPS (Tailscale Serve na TrueNAS).
+          # Ten adres można zmienić w Settings → Variables → VITE_API_BASE_URL.
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL || 'https://truenas-scale-1.tail9c1f91.ts.net' }}
 
       - name: Konfiguracja Pages
         uses: actions/configure-pages@v5
