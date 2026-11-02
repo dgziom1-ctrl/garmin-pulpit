@@ -58,7 +58,15 @@ MIME_OVERRIDES = {
 
 
 def log(message: str) -> None:
-    print(message, flush=True)
+    """pythonw.exe nie ma konsoli — wtedy po prostu pomijamy logowanie."""
+    stream = sys.stdout
+    if stream is None:
+        return
+    try:
+        stream.write(message + "\n")
+        stream.flush()
+    except Exception:  # noqa: BLE001
+        pass
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -245,7 +253,8 @@ class Server(ThreadingHTTPServer):
 
 def main() -> int:
     try:
-        sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]
+        if sys.stdout is not None:
+            sys.stdout.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]
     except Exception:  # noqa: BLE001
         pass
 
