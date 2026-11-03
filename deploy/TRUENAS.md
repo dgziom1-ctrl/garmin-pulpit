@@ -1,10 +1,7 @@
 # TrueNAS 24/7 — frontend + backend na jednym adresie
 
-Ten wariant jest docelowy: TrueNAS serwuje **i frontend, i API** pod jednym
-adresem HTTPS z Tailscale. Nie trzeba wtedy trzymać włączonego komputera z
-Windows.
-
-Docelowy adres:
+Ten wariant jest **wdrożony i działa**: TrueNAS serwuje i frontend, i API pod
+jednym adresem HTTPS z Tailscale.
 
 ```text
 https://truenas-scale-1.tail9c1f91.ts.net/
@@ -12,77 +9,70 @@ https://truenas-scale-1.tail9c1f91.ts.net/
 
 - `/` → zbudowana PWA z `frontend/dist`
 - `/api/v1/*` → FastAPI (ten sam kontener, port 8000)
-- Tailscale Serve na TrueNAS już przekazuje `/` na `localhost:8000`
+- Tailscale Serve na TrueNAS przekazuje `/` na `localhost:8000`
 
 ## Gdzie leżą pliki
 
-Na komputerze z Windows dataset jest pod `U:\` (albo
-`\\192.168.50.63\dash`). Na TrueNAS to zwykle:
+Na Windows dataset jest pod `U:\` (albo `\\192.168.50.63\dash`). Na TrueNAS:
 
 ```text
-/mnt/<pool>/dash/garmin-daemon   # backend
-/mnt/<pool>/dash/frontend        # frontend (git + dist)
-/mnt/<pool>/dash/frontend/dist   # zbudowana PWA
+/mnt/Pool1/dash/garmin-daemon          # backend
+/mnt/Pool1/dash/garmin-daemon/app      # źródła backendu (montowane do kontenera)
+/mnt/Pool1/dash/frontend               # frontend (git + dist)
+/mnt/Pool1/dash/frontend/dist          # zbudowana PWA
 ```
 
-Sprawdź nazwę puli:
+## Jak to jest podłączone
+
+Aplikacja `garmin-daemon` jest **Custom App** w TrueNAS. W jej YAML
+(Apps → garmin-daemon → Edit → Custom Config) są dopisane dwa montaże:
+
+```yaml
+    volumes:
+      - /mnt/Pool1/dash/garmin-daemon/data:/app/data
+      - /mnt/Pool1/dash/garmin-daemon/tokens:/app/tokens
+      - /mnt/Pool1/dash/garmin-daemon/app:/app/app:ro
+      - /mnt/Pool1/dash/frontend/dist:/app/frontend:ro
+```
+
+Dzięki temu działający kontener korzysta z **aktualnych źródeł** i serwuje
+`dist/` bez przebudowywania obrazu. Obraz `garmin-daemon:latest` zawiera
+zależności Pythona; montaż podmienia tylko kod aplikacji.
+
+Po zapisaniu YAML TrueNAS sam robi redeploy. Nie trzeba `docker build`.
+
+## Weryfikacja
 
 ```bash
-zfs list | grep dash
+curl -s https://truenas-scale-1.tail9c1f91.ts.net/healthz
+curl -s -o /dev/null -w '%{http_code}\n' \
+  https://truenas-scale-1.tail9c1f91.ts.net/api/v1/health/body-battery/today
 ```
 
-## Co już jest przygotowane
+Bez klucza endpoint Body Battery zwraca `401` (czyli istnieje), a frontend
+zwraca `200` i HTML aplikacji.
 
-- `garmin-daemon/app/main.py` — endpoint `/api/v1/health/body-battery/today`
-  i serwowanie `dist/` z `/app/frontend` (jeśli katalog istnieje).
-- `garmin-daemon/app/db.py` — tabela `body_battery_samples` + migracja kolumn.
-- `garmin-daemon/app/sync.py` — pobiera intraday Body Battery przy synchronizacji.
-- `garmin-daemon/docker-compose.yml` — montuje `../frontend/dist:/app/frontend:ro`.
-- `frontend/` — repo git i zbudowany `dist/`.
+Baza `data/garmin.db` po restarcie ma nową tabelę `body_battery_samples` oraz
+kolumny `body_battery_current` i `body_battery_drained` w `daily_health`.
+Synchronizacja dopisuje do niej próbki intraday.
 
-## Aktywacja (jednorazowo, na TrueNAS)
+## Klucz API w aplikacji
 
-Wymagany dostęp do Shella TrueNAS albo SSH. Bez tego zmiany w backendzie nie
-wejdą do działającego kontenera — obraz Dockera zawiera stary kod.
-
-```bash
-cd /mnt/<pool>/dash/garmin-daemon
-
-# 1. Przebuduj obraz z nowym kodem
-docker build -t garmin-daemon:latest .
-
-# 2. Jeśli używasz docker compose:
-docker compose up -d
-
-# 3. Jeśli aplikacja jest zarządzana przez TrueNAS Apps:
-#    Apps -> garmin-daemon -> Edit
-#    Dodaj mount:
-#      Host path:  /mnt/<pool>/dash/frontend/dist
-#      Mount path: /app/frontend
-#      Read-only:  tak
-#    Zapisz / Redeploy.
-```
-
-Po restarcie sprawdź:
-
-```bash
-curl -s http://localhost:8000/healthz
-curl -s -H "X-API-Key: TWOJ_KLUCZ" \
-  http://localhost:8000/api/v1/health/body-battery/today
-curl -s https://truenas-scale-1.tail9c1f91.ts.net/ | head
-```
-
-## Ustawienia w aplikacji
-
-Gdy otwierasz aplikację z adresu TrueNAS:
+Otwórz `https://truenas-scale-1.tail9c1f91.ts.net/`:
 
 - **Adres API** — zostaw **puste** (ten sam origin),
-- **Klucz API (X-API-Key)** — wpisz klucz backendu.
+- **Klucz API (X-API-Key)** — wpisz klucz z YAML aplikacji (`API_KEY=...`).
 
-Gdy otwierasz ją z GitHub Pages:
+Klucz jest przechowywany tylko w `localStorage` przeglądarki — nie jest
+wpisywany do JS ani do repo.
+
+Dla wersji na GitHub Pages:
 
 - **Adres API** — `https://truenas-scale-1.tail9c1f91.ts.net`,
-- **Klucz API** — jak wyżej.
+- **Klucz API** — ten sam.
+
+`CORS_ORIGINS` w aplikacji zawiera `https://dgziom1-ctrl.github.io`, więc Pages
+może wołać API. Wersja z TrueNAS działa same-origin i nie potrzebuje CORS.
 
 ## Aktualizacja frontendu
 
@@ -94,10 +84,18 @@ npm run build
 robocopy .\dist U:\frontend\dist /MIR
 ```
 
-Albo skopiuj nowy `dist` z artefaktu GitHub Actions. Service worker sam wykryje
-nowy `BUILD_ID` i przeładuje stronę.
+Service worker sam wykryje nowy `BUILD_ID` i przeładuje stronę. Nie trzeba
+restartować aplikacji TrueNAS — `dist` jest montowany jako katalog.
 
 ## Aktualizacja backendu
 
-Po zmianie kodu w `garmin-daemon` powtórz `docker build` i restart aplikacji.
-Baza `data/garmin.db` i tokeny `tokens/` są poza obrazem, więc nie znikną.
+Zmień pliki w `/mnt/Pool1/dash/garmin-daemon/app` (albo przez `U:\garmin-daemon\app`).
+Kontener ma je zamontowane, więc wystarczy restart aplikacji w TrueNAS
+(Apps → garmin-daemon → Restart), żeby uvicorn wczytał nowy kod.
+
+## Git
+
+- Frontend: `/mnt/Pool1/dash/frontend` — klon
+  `https://github.com/dgziom1-ctrl/garmin-pulpit.git`, gałąź `main`.
+- Backend: `/mnt/Pool1/dash/garmin-daemon` — lokalne repo git z commitem
+  zmian Body Battery + static frontend. `data/`, `tokens/`, `.env` są ignorowane.
