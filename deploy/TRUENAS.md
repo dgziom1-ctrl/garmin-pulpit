@@ -53,8 +53,11 @@ Bez klucza endpoint Body Battery zwraca `401` (czyli istnieje), a frontend
 zwraca `200` i HTML aplikacji.
 
 Baza `data/garmin.db` po restarcie ma nową tabelę `body_battery_samples` oraz
-kolumny `body_battery_current` i `body_battery_drained` w `daily_health`.
-Synchronizacja dopisuje do niej próbki intraday.
+kolumny `body_battery_current`, `body_battery_drained`, `sleep_deep_s`,
+`sleep_rem_s`, `sleep_light_s` i `sleep_awake_s` w `daily_health`.
+Synchronizacja dopisuje do niej próbki intraday i fazy snu. Jeśli po restarcie
+brakuje faz snu z ostatnich 30 dni, backend sam uruchamia jednorazowy pełny
+sync (do `BACKFILL_DAYS`), więc wykres snu wypełnia się bez ręcznego klikanie.
 
 ## Klucz API w aplikacji
 
