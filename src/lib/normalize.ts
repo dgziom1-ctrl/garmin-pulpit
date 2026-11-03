@@ -96,6 +96,14 @@ function toIsoDateTime(value: unknown, fallbackDate?: string | null): string {
   return base.toISOString()
 }
 
+/** Zachowuje lokalny czas treningu (backend wysyła "YYYY-MM-DD HH:MM:SS"). */
+function toLocalDateTime(value: unknown, fallbackDate?: string | null): string {
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}/.test(value.trim())) {
+    return value.trim().replace(' ', 'T').slice(0, 19)
+  }
+  return toIsoDateTime(value, fallbackDate)
+}
+
 function extractDate(raw: unknown): string | null {
   return toIsoDate(
     first(
@@ -118,7 +126,7 @@ export function normalizeSport(raw: string | null | undefined): SportKind {
   const value = (raw ?? '').toLowerCase()
   if (/(cycl|bike|rower|biking|ride|mtb)/.test(value)) return 'cycling'
   if (/(run|bieg|trail|treadmill|bieżn)/.test(value)) return 'running'
-  if (/(tennis|padel|squash|badminton|racket|ping.?pong|tenis)/.test(value)) return 'racket'
+  if (/(tennis|padel|squash|badminton|pickleball|racket|ping.?pong|tenis)/.test(value)) return 'racket'
   if (/(strength|weight|gym|fbw|sila|siła|indoor_cardio|fitness_equipment|cardio)/.test(value)) {
     return 'strength'
   }
@@ -135,7 +143,7 @@ export function normalizeSummary(raw: unknown): HealthSummary {
   )
   const readinessObject = isRecord(readinessRaw) ? readinessRaw : null
 
-  const hrvRaw = first(pick(source, 'hrv', 'hrvStatus', 'hrv_status', 'hrvSummary'))
+  const hrvRaw = first(pick(source, 'hrv'), pick(source, 'hrvSummary'))
   const hrv = isRecord(hrvRaw) ? hrvRaw : source
   const hrvBaseline = pick(hrv, 'baseline')
 
@@ -164,7 +172,7 @@ export function normalizeSummary(raw: unknown): HealthSummary {
   const durationSeconds = toNum(
     first(
       pick(sleepDto, 'sleepTimeSeconds', 'totalSleepSeconds', 'durationInSeconds', 'durationSec'),
-      pick(sleep, 'durationSec', 'totalSleepSeconds'),
+      pick(sleep, 'durationSec', 'totalSleepSeconds', 'sleep_seconds', 'sleepDurationSeconds'),
     ),
   )
 
@@ -175,7 +183,7 @@ export function normalizeSummary(raw: unknown): HealthSummary {
       (readinessObject ? toNum(pick(readinessObject, 'score', 'value', 'level')) : null),
     readinessLabel: readinessObject
       ? toText(pick(readinessObject, 'level', 'label', 'feedback', 'status'))
-      : toText(pick(source, 'readinessLabel', 'trainingStatus')),
+      : toText(pick(source, 'readinessLabel', 'readiness_level', 'trainingStatus')),
     bodyBattery: {
       current: toNum(
         first(
@@ -216,27 +224,32 @@ export function normalizeSummary(raw: unknown): HealthSummary {
       ),
       weeklyAvg: toNum(
         first(
-          pick(hrv, 'weeklyAvg', 'weekly_average', 'lastWeekAvg', 'sevenDayAvg'),
-          pick(source, 'hrvWeeklyAvg'),
+          pick(hrv, 'weeklyAvg', 'weekly_average', 'lastWeekAvg', 'sevenDayAvg', 'hrv_weekly_avg'),
+          pick(source, 'hrvWeeklyAvg', 'hrv_weekly_avg'),
         ),
       ),
       status: toText(
-        first(pick(hrv, 'status', 'hrvStatus', 'feedback', 'level'), pick(source, 'hrvStatus')),
+        first(
+          pick(hrv, 'status', 'hrvStatus', 'feedback', 'level', 'hrv_status'),
+          pick(source, 'hrvStatus', 'hrv_status'),
+        ),
       ),
       baselineLow: toNum(
         first(
-          pick(hrv, 'baselineLow', 'baseline_low', 'balancedLow', 'lowUpper'),
+          pick(hrv, 'baselineLow', 'baseline_low', 'balancedLow', 'lowUpper', 'hrv_baseline_low'),
           isRecord(hrvBaseline)
             ? pick(hrvBaseline, 'balancedLow', 'lowUpper', 'low', 'min')
             : undefined,
+          pick(source, 'hrv_baseline_low'),
         ),
       ),
       baselineHigh: toNum(
         first(
-          pick(hrv, 'baselineHigh', 'baseline_high', 'balancedUpper'),
+          pick(hrv, 'baselineHigh', 'baseline_high', 'balancedUpper', 'hrv_baseline_high'),
           isRecord(hrvBaseline)
             ? pick(hrvBaseline, 'balancedUpper', 'markerValue', 'high', 'max')
             : undefined,
+          pick(source, 'hrv_baseline_high'),
         ),
       ),
     },
@@ -254,27 +267,41 @@ export function normalizeSummary(raw: unknown): HealthSummary {
       deepMin:
         minutes(first(pick(sleep, 'deepMin', 'deepSleepMinutes'))) ??
         secondsToMinutes(
-          first(pick(sleepDto, 'deepSleepSeconds', 'deep_sleep_seconds'), pick(sleep, 'deepSleepSeconds')),
+          first(
+            pick(sleepDto, 'deepSleepSeconds', 'deep_sleep_seconds', 'sleep_deep_s'),
+            pick(sleep, 'deepSleepSeconds', 'sleep_deep_s'),
+          ),
         ),
       remMin:
         minutes(first(pick(sleep, 'remMin', 'remSleepMinutes'))) ??
         secondsToMinutes(
-          first(pick(sleepDto, 'remSleepSeconds', 'rem_sleep_seconds'), pick(sleep, 'remSleepSeconds')),
+          first(
+            pick(sleepDto, 'remSleepSeconds', 'rem_sleep_seconds', 'sleep_rem_s'),
+            pick(sleep, 'remSleepSeconds', 'sleep_rem_s'),
+          ),
         ),
       lightMin:
         minutes(first(pick(sleep, 'lightMin', 'lightSleepMinutes'))) ??
         secondsToMinutes(
-          first(pick(sleepDto, 'lightSleepSeconds', 'light_sleep_seconds'), pick(sleep, 'lightSleepSeconds')),
+          first(
+            pick(sleepDto, 'lightSleepSeconds', 'light_sleep_seconds', 'sleep_light_s'),
+            pick(sleep, 'lightSleepSeconds', 'sleep_light_s'),
+          ),
         ),
       awakeMin:
         minutes(first(pick(sleep, 'awakeMin', 'awakeMinutes'))) ??
         secondsToMinutes(
           first(
-            pick(sleepDto, 'awakeSleepSeconds', 'awakeDurationSeconds', 'awake_sleep_seconds'),
-            pick(sleep, 'awakeSleepSeconds', 'awakeDurationSeconds'),
+            pick(sleepDto, 'awakeSleepSeconds', 'awakeDurationSeconds', 'awake_sleep_seconds', 'sleep_awake_s'),
+            pick(sleep, 'awakeSleepSeconds', 'awakeDurationSeconds', 'sleep_awake_s'),
           ),
         ),
-      quality: toText(first(pick(sleep, 'quality', 'feedback', 'sleepQuality'), pick(sleepDto, 'sleepQuality'))),
+      quality: toText(
+        first(
+          pick(sleep, 'quality', 'feedback', 'sleepQuality', 'sleep_quality'),
+          pick(sleepDto, 'sleepQuality'),
+        ),
+      ),
     },
     vo2max: toNum(first(pick(source, 'vo2max', 'vo2Max', 'vo2_max', 'vo2MaxValue'))),
     restingHr: toNum(
@@ -296,9 +323,13 @@ export function normalizeSummary(raw: unknown): HealthSummary {
 
 export function normalizeHistory(raw: unknown): DailyHealth[] {
   const root = isRecord(raw) ? raw : {}
+  // `days` w odpowiedzi backendu to liczba dni (number), a nie lista.
+  // Dlatego wybieramy pierwszy kandydat, który jest tablicą.
   const listRaw = Array.isArray(raw)
     ? raw
-    : first(pick(root, 'history'), pick(root, 'days'), pick(root, 'items'), pick(root, 'data'))
+    : [pick(root, 'history'), pick(root, 'items'), pick(root, 'data'), pick(root, 'days')].find(
+        (candidate) => Array.isArray(candidate),
+      )
   if (!Array.isArray(listRaw)) return []
 
   const byDate = new Map<string, DailyHealth>()
@@ -363,7 +394,7 @@ export function normalizeActivities(raw: unknown): Activity[] {
   listRaw.forEach((item, index) => {
     if (!isRecord(item)) return
 
-    const startTime = toIsoDateTime(
+    const startTime = toLocalDateTime(
       first(
         pick(item, 'startTime', 'startTimeLocal', 'start_time', 'startTimeGmt', 'beginTime'),
       ),
@@ -373,14 +404,25 @@ export function normalizeActivities(raw: unknown): Activity[] {
       toText(
         first(
           getPath(item, 'activityType.typeKey'),
-          pick(item, 'sportType', 'sport', 'typeKey', 'activityType', 'type'),
+          pick(item, 'sportType', 'sport', 'typeKey', 'type_key', 'activityType', 'type', 'category'),
         ),
       ) ?? 'other'
     const distance = toNum(first(pick(item, 'distanceM', 'distance', 'distance_m', 'distanceInMeters')))
     const duration = toNum(
       first(
-        pick(item, 'durationSec', 'duration', 'movingDuration', 'elapsedDuration', 'durationInSeconds'),
+        pick(
+          item,
+          'durationSec',
+          'duration',
+          'duration_s',
+          'movingDuration',
+          'elapsedDuration',
+          'durationInSeconds',
+        ),
       ),
+    )
+    const trainingLoad = toNum(
+      first(pick(item, 'trainingLoad', 'activityTrainingLoad', 'load', 'training_load')),
     )
 
     activities.push({
@@ -393,14 +435,16 @@ export function normalizeActivities(raw: unknown): Activity[] {
       startTime,
       durationSec: Math.max(0, Math.round(duration ?? 0)),
       distanceM: distance,
-      avgHr: toNum(first(pick(item, 'avgHr', 'averageHR', 'avgHeartRate', 'averageHr'))),
-      maxHr: toNum(first(pick(item, 'maxHr', 'maxHR', 'maxHeartRate'))),
+      avgHr: toNum(first(pick(item, 'avgHr', 'averageHR', 'avgHeartRate', 'averageHr', 'avg_hr'))),
+      maxHr: toNum(first(pick(item, 'maxHr', 'maxHR', 'maxHeartRate', 'max_hr'))),
       calories: toNum(first(pick(item, 'calories', 'activeKilocalories', 'totalCalories'))),
-      trainingLoad: toNum(
-        first(pick(item, 'trainingLoad', 'activityTrainingLoad', 'load', 'training_load')),
+      trainingLoad: trainingLoad === null ? null : Math.round(trainingLoad),
+      aerobicTe: toNum(
+        first(pick(item, 'aerobicTe', 'aerobicTrainingEffect', 'aerobicTE', 'aerobic_te')),
       ),
-      aerobicTe: toNum(first(pick(item, 'aerobicTe', 'aerobicTrainingEffect', 'aerobicTE'))),
-      elevationGainM: toNum(first(pick(item, 'elevationGainM', 'elevationGain', 'totalAscent'))),
+      elevationGainM: toNum(
+        first(pick(item, 'elevationGainM', 'elevationGain', 'elevation_gain', 'totalAscent')),
+      ),
       hrZones: normalizeZones(item),
     })
   })

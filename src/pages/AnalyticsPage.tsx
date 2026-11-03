@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Flame, ListChecks, Moon, ShieldAlert, TrendingUp, Zap } from 'lucide-react'
+import { Flame, Info, ListChecks, Moon, ShieldAlert, TrendingUp, Zap } from 'lucide-react'
 import { useHealthData } from '../context/HealthDataContext'
 import {
   acrZone,
@@ -161,6 +161,62 @@ export function AnalyticsPage() {
               </span>
             ))}
           </div>
+        </Card>
+
+        <Card className="card-pad">
+          <CardHeader
+            title="Jak czytać: forma, zmęczenie i kondycja"
+            hint="Trzy liczby, jedna decyzja treningowa"
+            icon={<Info className="h-4 w-4" />}
+          />
+          <div className="mt-3 grid gap-3 text-xs sm:grid-cols-3">
+            <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/5 p-3">
+              <p className="font-semibold text-indigo-200">
+                Kondycja (CTL) · {load.ctl !== null ? fmtNumber(load.ctl, 1) : '—'}
+              </p>
+              <p className="mt-1.5 leading-relaxed text-slate-400">
+                Baza wytrenowania: średnie obciążenie z ostatnich 42 dni. Rośnie powoli i
+                pokazuje, ile pracy organizm jest w stanie „unieść” na co dzień.
+              </p>
+            </div>
+            <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3">
+              <p className="font-semibold text-amber-200">
+                Zmęczenie (ATL) · {load.atl !== null ? fmtNumber(load.atl, 1) : '—'}
+              </p>
+              <p className="mt-1.5 leading-relaxed text-slate-400">
+                Krótkotrwałe zmęczenie: średnie obciążenie z ostatnich 7 dni. Reaguje szybko —
+                rośnie po ciężkich dniach i spada po odpoczynku.
+              </p>
+            </div>
+            <div
+              className={cn(
+                'rounded-xl border p-3',
+                formInfo.tone === 'emerald'
+                  ? 'border-emerald-500/20 bg-emerald-500/5'
+                  : formInfo.tone === 'cyan'
+                    ? 'border-cyan-500/20 bg-cyan-500/5'
+                    : formInfo.tone === 'amber'
+                      ? 'border-amber-500/20 bg-amber-500/5'
+                      : formInfo.tone === 'rose'
+                        ? 'border-rose-500/20 bg-rose-500/5'
+                        : 'border-slate-700/40 bg-slate-800/20',
+              )}
+            >
+              <p className="font-semibold text-slate-100">
+                Forma (TSB) · {load.tsb !== null ? `${load.tsb > 0 ? '+' : ''}${fmtNumber(load.tsb, 1)}` : '—'}
+              </p>
+              <p className="mt-1.5 leading-relaxed text-slate-400">
+                Różnica: kondycja minus zmęczenie. Ujemna = jesteś zmęczony, dodatnia = masz
+                świeżość. Zakresy: poniżej −30 przeciążenie, −30…−10 zmęczenie, −10…+5
+                neutralnie, +5…+25 optymalnie, powyżej +25 świeży.
+              </p>
+            </div>
+          </div>
+          <p className="mt-3 border-t border-slate-800/70 pt-3 text-[11px] leading-relaxed text-slate-500">
+            Praktycznie: przy mocno ujemnym TSB nie dokładaj intensywności — postaw na sen i
+            spokojny trening. Przy dodatnim TSB możesz zrobić akcent jakościowy. ACR (ostre /
+            chroniczne) w zakresie 0,8–1,3 oznacza bezpieczne tempo progresji.
+          </p>
         </Card>
 
         <div className="grid gap-4 lg:grid-cols-2">

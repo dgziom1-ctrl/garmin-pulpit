@@ -123,7 +123,7 @@ export async function loadSnapshot(
   const [summary, history, activities, tsb, bodyBattery] = await Promise.allSettled([
     request<unknown>(baseUrl, apiKey, '/api/v1/health/summary'),
     request<unknown>(baseUrl, apiKey, `/api/v1/health/history?days=${days}`),
-    request<unknown>(baseUrl, apiKey, '/api/v1/activities/recent?limit=60'),
+    request<unknown>(baseUrl, apiKey, '/api/v1/activities/recent?limit=200'),
     request<unknown>(baseUrl, apiKey, `/api/v1/tsb?days=${days}`),
     request<unknown>(baseUrl, apiKey, '/api/v1/health/body-battery/today'),
   ])
